@@ -81,6 +81,26 @@ private object Strings {
     }
 }
 
+/** Local mirror of the hook-side kill switch; avoids Java-package resolution coupling in the UI module. */
+private object KillSwitchCompat {
+    private val file = File("/storage/emulated/0/.sketchware/sketchpilot/killswitch")
+
+    fun isActive(): Boolean = file.exists()
+
+    fun set(active: Boolean) {
+        try {
+            if (active) {
+                file.parentFile?.mkdirs()
+                if (!file.exists()) file.createNewFile()
+            } else if (file.exists()) {
+                file.delete()
+            }
+        } catch (t: Throwable) {
+            // best effort
+        }
+    }
+}
+
 /** Thread + Handler helper: keeps work off the UI thread without adding another concurrency framework. */
 private fun <T> runBackground(work: () -> T, done: (T?) -> Unit) {
     val handler = Handler(Looper.getMainLooper())
@@ -277,7 +297,7 @@ private fun McpScreen(lang: Lang, activity: ComponentActivity) {
 @Composable
 private fun ToolsScreen(lang: Lang, activity: ComponentActivity, onLanguage: (Lang) -> Unit) {
     var diagnosticsPath by remember { mutableStateOf("") }
-    var killSwitch by remember { mutableStateOf<Boolean>(snd.sketchpilot.core.hook.KillSwitch.isActive()) }
+    var killSwitch by remember { mutableStateOf<Boolean>(KillSwitchCompat.isActive()) }
 
     Button(onClick = {
         diagnosticsPath = "building..."
@@ -300,7 +320,7 @@ private fun ToolsScreen(lang: Lang, activity: ComponentActivity, onLanguage: (La
         Text(Strings.get(lang, "killswitch"))
         Spacer(Modifier.padding(8.dp))
         Switch(checked = killSwitch, onCheckedChange = {
-            snd.sketchpilot.core.hook.KillSwitch.set(it)
+            KillSwitchCompat.set(it)
             killSwitch = it
         })
     }
