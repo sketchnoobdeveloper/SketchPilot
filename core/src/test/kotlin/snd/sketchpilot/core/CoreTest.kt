@@ -26,7 +26,7 @@ class CoreTest {
         paths.dataFile("602", "logic").writeBytes(
             crypto.encrypt("@MainActivity.java_onCreate_initializeLogic\n{\"opCode\":\"addSourceDirectly\"}\n")
         )
-        paths.dataFile("602", "view_root").writeBytes("{\"main.xml\":{\"class_name\":\"LinearLayout\"}}")
+        paths.dataFile("602", "view_root").writeText("{\"main.xml\":{\"class_name\":\"LinearLayout\"}}")
         return root
     }
 
