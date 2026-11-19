@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -67,6 +68,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -129,7 +131,7 @@ class ComposeMainActivity : ComponentActivity() {
 @Composable
 private fun SketchPilotApp(vm: MainViewModel = viewModel()) {
     val nav = rememberNavController()
-    var language by remember { mutableStateOf("en") }
+    var language by rememberSaveable { mutableStateOf("en") }
     val tr = { key: String -> if (language == "bn") T.bn(key) else T.en(key) }
     val backStack by nav.currentBackStackEntryAsState()
     val current = backStack?.destination?.route ?: Routes.PROJECTS
@@ -241,8 +243,8 @@ private fun ProjectsScreen(vm: MainViewModel, tr: (String) -> String) {
                 }
             }
         }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(projects) { p ->
+        LazyColumn(contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(projects, key = { it.id }) { p ->
                 Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
                     Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(
@@ -278,11 +280,11 @@ private fun AgentScreen(vm: MainViewModel, tr: (String) -> String) {
     val messages by vm.messages.collectAsState()
     val busy by vm.busy.collectAsState()
     var input by remember { mutableStateOf("") }
-    var base by remember { mutableStateOf(vm.baseUrl) }
-    var model by remember { mutableStateOf(vm.model) }
+    var base by rememberSaveable { mutableStateOf(vm.baseUrl) }
+    var model by rememberSaveable { mutableStateOf(vm.model) }
     var key by remember { mutableStateOf(vm.apiKey) }
-    var showProvider by remember { mutableStateOf(false) }
-    var showKey by remember { mutableStateOf(false) }
+    var showProvider by rememberSaveable { mutableStateOf(false) }
+    var showKey by rememberSaveable { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         FilledTonalButton(onClick = { showProvider = !showProvider }) { Text(tr("provider")) }
@@ -310,7 +312,7 @@ private fun AgentScreen(vm: MainViewModel, tr: (String) -> String) {
                 }
             }
         }
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(messages) { msg ->
                 Card(Modifier.fillMaxWidth()) {
                     Text("${msg.role}: ${msg.text}", Modifier.padding(12.dp))
@@ -357,7 +359,7 @@ private fun CapabilitiesScreen(tr: (String) -> String) {
     }
     FilledTonalButton(onClick = { reload() }) { Text(tr("refresh")) }
     Spacer(Modifier.height(12.dp))
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(rows) { Card(Modifier.fillMaxWidth()) { Text(it, Modifier.padding(12.dp)) } }
     }
 }
