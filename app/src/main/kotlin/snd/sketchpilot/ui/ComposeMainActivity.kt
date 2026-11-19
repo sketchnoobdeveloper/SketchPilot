@@ -1,11 +1,12 @@
 package snd.sketchpilot.ui
 
-import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,13 +17,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -30,99 +31,67 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import snd.sketchpilot.mcp.McpConfig
-import snd.sketchpilot.mcp.McpService
-import snd.sketchpilot.mcp.server.McpServer
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
 import java.io.File
 
-private enum class Screen { PROJECTS, AGENT, CAPABILITIES, MCP, TOOLS }
-private enum class Lang { EN, BN }
-
-private object Strings {
-    fun get(lang: Lang, key: String): String {
-        if (lang == Lang.BN) {
-            return when (key) {
-                "app" -> "স্কেচপাইলট"
-                "projects" -> "প্রকল্প"
-                "agent" -> "এজেন্ট"
-                "caps" -> "ক্ষমতা"
-                "mcp" -> "MCP"
-                "tools" -> "টুল"
-                "diagnostics" -> "ডায়াগনস্টিক্স"
-                "run_diagnostics" -> "ডায়াগনস্টিক্স চালান"
-                "settings" -> "সেটিংস"
-                "language" -> "ভাষা"
-                "killswitch" -> "মডিউল বন্ধ করুন"
-                else -> key
-            }
-        }
-        return when (key) {
-            "app" -> "SketchPilot"
-            "projects" -> "Projects"
-            "agent" -> "Agent"
-            "caps" -> "Capabilities"
-            "mcp" -> "MCP"
-            "tools" -> "Tools"
-            "diagnostics" -> "Diagnostics"
-            "run_diagnostics" -> "Run diagnostics"
-            "settings" -> "Settings"
-            "language" -> "Language"
-            "killswitch" -> "Module kill switch"
-            else -> key
-        }
-    }
+private object Routes {
+    const val PROJECTS = "projects"
+    const val AGENT = "agent"
+    const val CAPABILITIES = "capabilities"
+    const val MCP = "mcp"
+    const val SETTINGS = "settings"
 }
 
-/** Local mirror of the hook-side kill switch; avoids Java-package resolution coupling in the UI module. */
-private object KillSwitchCompat {
-    private val file = File("/storage/emulated/0/.sketchware/sketchpilot/killswitch")
-
-    fun isActive(): Boolean = file.exists()
-
-    fun set(active: Boolean) {
-        try {
-            if (active) {
-                file.parentFile?.mkdirs()
-                if (!file.exists()) file.createNewFile()
-            } else if (file.exists()) {
-                file.delete()
-            }
-        } catch (t: Throwable) {
-            // best effort
-        }
+private object T {
+    fun en(key: String) = when (key) {
+        "app" -> "SketchPilot"; "projects" -> "Projects"; "agent" -> "Agent"
+        "caps" -> "Capabilities"; "mcp" -> "MCP"; "settings" -> "Settings"
+        "refresh" -> "Refresh"; "prompt" -> "Ask the agent..."; "send" -> "Send"
+        "diagnostics" -> "Run diagnostics"; "provider" -> "Provider"
+        else -> key
     }
-}
-
-/** Thread + Handler helper: keeps work off the UI thread without adding another concurrency framework. */
-private fun <T> runBackground(work: () -> T, done: (T?) -> Unit) {
-    val handler = Handler(Looper.getMainLooper())
-    val runnable = Runnable {
-        try {
-            val result = work()
-            handler.post { done(result) }
-        } catch (t: Throwable) {
-            handler.post { done(null) }
-        }
+    fun bn(key: String) = when (key) {
+        "app" -> "স্কেচপাইলট"; "projects" -> "প্রকল্প"; "agent" -> "এজেন্ট"
+        "caps" -> "ক্ষমতা"; "mcp" -> "MCP"; "settings" -> "সেটিংস"
+        "refresh" -> "রিফ্রেশ"; "prompt" -> "এজেন্টকে জিজ্ঞাসা করুন..."; "send" -> "পাঠান"
+        "diagnostics" -> "ডায়াগনস্টিক্স"; "provider" -> "প্রদানকারী"
+        else -> key
     }
-    Thread(runnable, "SketchPilotUi").start()
 }
 
 class ComposeMainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+                .launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    SketchPilotApp(this)
-                }
+            val context = LocalContext.current
+            val scheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) dynamicDarkColorScheme(context)
+            else darkColorScheme()
+            MaterialTheme(colorScheme = scheme) {
+                Surface(Modifier.fillMaxSize()) { SketchPilotApp() }
             }
         }
     }
@@ -130,78 +99,63 @@ class ComposeMainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SketchPilotApp(activity: ComponentActivity) {
-    var screen by remember { mutableStateOf(Screen.PROJECTS) }
-    var lang by remember { mutableStateOf(Lang.EN) }
+private fun SketchPilotApp(vm: MainViewModel = viewModel()) {
+    val nav = rememberNavController()
+    var language by remember { mutableStateOf("en") }
+    val tr = { key: String -> if (language == "bn") T.bn(key) else T.en(key) }
+    val backStack by nav.currentBackStackEntryAsState()
+    val current = backStack?.destination?.route ?: Routes.PROJECTS
 
     Scaffold(
-        topBar = {
-            TopAppBar(title = { Text(Strings.get(lang, "app") + " — " + Strings.get(lang, screen.name.lowercase())) })
-        },
+        topBar = { TopAppBar(title = { Text(tr("app") + " — " + tr(currentTitleKey(current))) }) },
         bottomBar = {
-            NavigationBar {
+            BottomAppBar {
                 val items = listOf(
-                    Screen.PROJECTS to "projects",
-                    Screen.AGENT to "agent",
-                    Screen.CAPABILITIES to "caps",
-                    Screen.MCP to "mcp",
-                    Screen.TOOLS to "tools"
+                    Routes.PROJECTS to "projects", Routes.AGENT to "agent",
+                    Routes.CAPABILITIES to "caps", Routes.MCP to "mcp", Routes.SETTINGS to "settings"
                 )
-                items.forEach { (target, labelKey) ->
+                items.forEach { (route, key) ->
                     NavigationBarItem(
-                        selected = screen == target,
-                        onClick = { screen = target },
+                        selected = current == route,
+                        onClick = { nav.navigate(route) },
                         icon = {},
-                        label = { Text(Strings.get(lang, labelKey)) }
+                        label = { Text(tr(key)) }
                     )
                 }
             }
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-            when (screen) {
-                Screen.PROJECTS -> ProjectsScreen(lang)
-                Screen.AGENT -> AgentScreen(lang)
-                Screen.CAPABILITIES -> CapabilitiesScreen(lang)
-                Screen.MCP -> McpScreen(lang, activity)
-                Screen.TOOLS -> ToolsScreen(lang, activity, onLanguage = { lang = it })
-            }
+        NavHost(nav, startDestination = Routes.PROJECTS, modifier = Modifier.padding(padding)) {
+            composable(Routes.PROJECTS) { ProjectsScreen(vm, tr) }
+            composable(Routes.AGENT) { AgentScreen(vm, tr) }
+            composable(Routes.CAPABILITIES) { CapabilitiesScreen(tr) }
+            composable(Routes.MCP) { McpScreen(tr) }
+            composable(Routes.SETTINGS) { SettingsScreen(tr, language, { language = it }) }
         }
     }
 }
 
+private fun currentTitleKey(route: String) = when (route) {
+    Routes.PROJECTS -> "projects"; Routes.AGENT -> "agent"; Routes.CAPABILITIES -> "caps"
+    Routes.MCP -> "mcp"; else -> "settings"
+}
+
 @Composable
-private fun ProjectsScreen(lang: Lang) {
-    var loading by remember { mutableStateOf(true) }
-    var rows by remember { mutableStateOf(listOf<String>()) }
-    var error by remember { mutableStateOf("") }
-
-    fun load() {
-        loading = true
-        runBackground({
-            val repo = snd.sketchpilot.core.data.OfflineRepository()
-            repo.listProjects().map { it.id + "  •  " + it.workspaceName + "  •  " + it.packageName }
-        }, { result ->
-            loading = false
-            if (result == null) error = "offline repository unavailable"
-            else rows = result
-        })
-    }
-
-    androidx.compose.runtime.LaunchedEffect(Unit) { load() }
-
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        FilledTonalButton(onClick = { load() }) { Text("Refresh") }
-        Spacer(Modifier.height(8.dp))
-        if (loading) CircularProgressIndicator()
-    }
-    if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
-    Spacer(Modifier.height(12.dp))
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(rows) { row ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(row, style = MaterialTheme.typography.bodyLarge)
+private fun ProjectsScreen(vm: MainViewModel, tr: (String) -> String) {
+    val projects by vm.projects.collectAsState()
+    val status by vm.status.collectAsState()
+    LaunchedEffect(Unit) { vm.refreshProjects() }
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        FilledTonalButton(onClick = { vm.refreshProjects() }) { Text(tr("refresh")) }
+        Text(status, style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(12.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(projects) { p ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(p.workspaceName.ifEmpty { p.id }, style = MaterialTheme.typography.titleMedium)
+                        Text("${p.id} • ${p.packageName}", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
         }
@@ -209,116 +163,103 @@ private fun ProjectsScreen(lang: Lang) {
 }
 
 @Composable
-private fun AgentScreen(lang: Lang) {
-    var baseUrl by remember { mutableStateOf("https://api.openai.com/v1") }
-    var model by remember { mutableStateOf("gpt-4o-mini") }
-    var apiKey by remember { mutableStateOf("") }
-    var status by remember { mutableStateOf("") }
+private fun AgentScreen(vm: MainViewModel, tr: (String) -> String) {
+    val messages by vm.messages.collectAsState()
+    val busy by vm.busy.collectAsState()
+    var input by remember { mutableStateOf("") }
+    var base by remember { mutableStateOf(vm.baseUrl) }
+    var model by remember { mutableStateOf(vm.model) }
+    var key by remember { mutableStateOf(vm.apiKey) }
+    var showProvider by remember { mutableStateOf(false) }
 
-    Text("Provider setup", style = MaterialTheme.typography.titleMedium)
-    OutlinedTextField(baseUrl, { baseUrl = it }, label = { Text("Base URL") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(model, { model = it }, label = { Text("Model") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(apiKey, { apiKey = it }, label = { Text("API key") }, modifier = Modifier.fillMaxWidth())
-    Spacer(Modifier.height(12.dp))
-    Button(onClick = {
-        status = "testing..."
-        runBackground({
-            snd.sketchpilot.provider.OpenAiCompatibleProvider().testConnection(apiKey, model, baseUrl)
-        }, { result ->
-            status = if (result == null) "test failed" else "ok=" + result.optBoolean("ok") +
-                " " + result.optString("preview", "")
-        })
-    }) { Text("Test connection") }
-    Spacer(Modifier.height(8.dp))
-    Text(status)
-    Spacer(Modifier.height(16.dp))
-    Text(
-        "The agent loop, approvals, context engine and redaction are implemented in the engine layer. " +
-            "Native tool calling and streaming are exercised through the configured provider.",
-        style = MaterialTheme.typography.bodyMedium
-    )
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        FilledTonalButton(onClick = { showProvider = !showProvider }) { Text(tr("provider")) }
+        if (showProvider) {
+            OutlinedTextField(base, { base = it; vm.baseUrl = it }, label = { Text("Base URL") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(model, { model = it; vm.model = it }, label = { Text("Model") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(key, { key = it; vm.apiKey = it }, label = { Text("API key") }, modifier = Modifier.fillMaxWidth())
+        }
+        Spacer(Modifier.height(12.dp))
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(messages) { msg ->
+                Card(Modifier.fillMaxWidth()) {
+                    Text("${msg.role}: ${msg.text}", Modifier.padding(12.dp))
+                }
+            }
+        }
+        OutlinedTextField(input, { input = it }, label = { Text(tr("prompt")) }, modifier = Modifier.fillMaxWidth())
+        Button(
+            onClick = { vm.sendPrompt(input); input = "" },
+            enabled = !busy && input.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        ) { if (busy) CircularProgressIndicator() else Text(tr("send")) }
+    }
 }
 
 @Composable
-private fun CapabilitiesScreen(lang: Lang) {
+private fun CapabilitiesScreen(tr: (String) -> String) {
     var rows by remember { mutableStateOf(listOf<String>()) }
-    fun load() {
-        runBackground({
+    LaunchedEffect(Unit) {
+        rows = runCatching {
             val file = File("/storage/emulated/0/.sketchware/sketchpilot/capabilities.json")
-            if (!file.isFile) return@runBackground listOf("No snapshot yet — open Sketchware Pro with the module enabled.")
-            val json = String(file.readBytes(), Charsets.UTF_8)
-            val array = org.json.JSONArray(json)
-            (0 until array.length()).map { i ->
-                val row = array.getJSONObject(i)
-                row.optString("label") + " [" + row.optString("mode") + "] " + row.optString("detail")
+            if (!file.isFile) listOf("No snapshot yet — open Sketchware Pro with the module enabled.")
+            else {
+                val array = org.json.JSONArray(file.readText())
+                (0 until array.length()).map { i ->
+                    val row = array.getJSONObject(i)
+                    "${row.optString("label")} [${row.optString("mode")}] ${row.optString("detail")}"
+                }
             }
-        }, { result -> if (result != null) rows = result })
+        }.getOrDefault(listOf("Snapshot unreadable"))
     }
-    androidx.compose.runtime.LaunchedEffect(Unit) { load() }
-    FilledTonalButton(onClick = { load() }) { Text("Refresh") }
-    Spacer(Modifier.height(12.dp))
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(rows) { row ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Text(row, modifier = Modifier.padding(12.dp))
-            }
-        }
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(rows) { Card(Modifier.fillMaxWidth()) { Text(it, Modifier.padding(12.dp)) } }
     }
 }
 
 @Composable
-private fun McpScreen(lang: Lang, activity: ComponentActivity) {
-    var running by remember { mutableStateOf(McpServer.RUNNING) }
-    var tokenPresent by remember { mutableStateOf(McpConfig.TOKEN_FILE.isFile) }
-    Column {
-        Text("Streamable HTTP: http://127.0.0.1:17890/mcp")
-        Text("Server running: $running")
-        Text("Pairing token present: $tokenPresent")
-        Spacer(Modifier.height(12.dp))
-        Row {
-            Button(onClick = {
-                activity.startForegroundService(Intent(activity, McpService::class.java))
-                running = true
-            }) { Text("Start") }
-            Spacer(Modifier.padding(8.dp))
-            FilledTonalButton(onClick = {
-                activity.stopService(Intent(activity, McpService::class.java))
-                running = false
-            }) { Text("Stop") }
-        }
-        Spacer(Modifier.height(12.dp))
-        Text("The bearer token is never displayed. Copy it from the app's external files directory.")
+private fun McpScreen(tr: (String) -> String) {
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Text("Streamable HTTP", style = MaterialTheme.typography.titleMedium)
+        Text("http://127.0.0.1:17890/mcp")
+        Text("Bearer token: stored in app files, never displayed")
+        Spacer(Modifier.height(16.dp))
+        Text("Register in OpenCode with mcp.servers + protocol auto.", style = MaterialTheme.typography.bodyMedium)
     }
 }
 
 @Composable
-private fun ToolsScreen(lang: Lang, activity: ComponentActivity, onLanguage: (Lang) -> Unit) {
-    var diagnosticsPath by remember { mutableStateOf("") }
-    var killSwitch by remember { mutableStateOf<Boolean>(KillSwitchCompat.isActive()) }
-
-    Button(onClick = {
-        diagnosticsPath = "building..."
-        runBackground({
-            snd.sketchpilot.diagnostics.DiagnosticsKit.buildZip(activity)?.absolutePath
-        }, { path -> diagnosticsPath = path ?: "diagnostics failed" })
-    }) { Text(Strings.get(lang, "run_diagnostics")) }
-    Spacer(Modifier.height(8.dp))
-    Text(diagnosticsPath)
-
-    Spacer(Modifier.height(24.dp))
-    Text(Strings.get(lang, "settings"), style = MaterialTheme.typography.titleMedium)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(Strings.get(lang, "language") + ": ")
-        Button(onClick = { onLanguage(Lang.EN) }) { Text("EN") }
-        Spacer(Modifier.padding(4.dp))
-        Button(onClick = { onLanguage(Lang.BN) }) { Text("BN") }
-    }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(Strings.get(lang, "killswitch"))
-        Spacer(Modifier.padding(8.dp))
-        Switch(checked = killSwitch, onCheckedChange = {
-            KillSwitchCompat.set(it)
-            killSwitch = it
-        })
+private fun SettingsScreen(tr: (String) -> String, language: String, onLanguage: (String) -> Unit) {
+    var diagnostics by remember { mutableStateOf("") }
+    var kill by remember { mutableStateOf(File("/storage/emulated/0/.sketchware/sketchpilot/killswitch").exists()) }
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Text(tr("settings"), style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("English / বাংলা")
+            Button(onClick = { onLanguage("en") }) { Text("EN") }
+            Button(onClick = { onLanguage("bn") }) { Text("BN") }
+        }
+        Spacer(Modifier.height(12.dp))
+        val activity = LocalContext.current as ComponentActivity
+        Button(onClick = {
+            diagnostics = "building..."
+            Thread({
+                val path = runCatching {
+                    snd.sketchpilot.diagnostics.DiagnosticsKit.buildZip(activity.application)?.absolutePath
+                }.getOrNull()
+                activity.runOnUiThread { diagnostics = path ?: "failed" }
+            }, "Diagnostics").start()
+        }) { Text(tr("diagnostics")) }
+        Text(diagnostics)
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Module kill switch")
+            Switch(checked = kill, onCheckedChange = {
+                val file = File("/storage/emulated/0/.sketchware/sketchpilot/killswitch")
+                if (it) { file.parentFile?.mkdirs(); file.createNewFile() } else file.delete()
+                kill = it
+            })
+        }
     }
 }

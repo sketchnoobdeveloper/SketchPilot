@@ -39,11 +39,6 @@
             android:label="SketchPilot Capabilities" />
 
         <activity
-            android:name=".ui.MainActivity"
-            android:exported="true"
-            android:label="SketchPilot (legacy)" />
-
-        <activity
             android:name=".ui.ComposeMainActivity"
             android:exported="true"
             android:label="SketchPilot">
