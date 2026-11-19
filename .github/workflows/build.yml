@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,11 +20,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK components
-        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+      - name: Prepare Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          if [ ! -d "$ANDROID_HOME/platforms/android-34" ]; then
+            yes | sdkmanager --licenses > /dev/null || true
+            sdkmanager "platforms;android-34" "build-tools;34.0.0"
+          fi
+          ls "$ANDROID_HOME/platforms"
 
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
