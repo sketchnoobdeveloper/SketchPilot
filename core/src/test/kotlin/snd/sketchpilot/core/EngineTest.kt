@@ -58,12 +58,16 @@ class EngineTest {
 
         val events = mutableListOf<String>()
         val providers = ProviderRegistry()
+        var invocations = 0
         providers.register(object : LlmProvider {
             override val name = "mock"
             override fun stream(request: ProviderRequest, callback: ProviderCallback) {
+                invocations++
                 callback.onToken("hello")
-                callback.onToolCall(JSONObject().put("function", JSONObject()
-                    .put("name", "project.list").put("arguments", "{}")))
+                if (invocations == 1) {
+                    callback.onToolCall(JSONObject().put("function", JSONObject()
+                        .put("name", "project.list").put("arguments", "{}")))
+                }
                 callback.onDone()
             }
             override fun testConnection(apiKey: String, model: String, baseUrl: String) = JSONObject().put("ok", true)
@@ -72,7 +76,7 @@ class EngineTest {
             override fun onEvent(event: AgentEvent) { events.add(event.type) }
         })
         loop.providerName = "mock"
-        loop.maxSteps = 1
+        loop.maxSteps = 2
         val result = loop.run("list projects")
         assertTrue(result.getBoolean("ok"))
         assertTrue(events.contains("tool_call"))
