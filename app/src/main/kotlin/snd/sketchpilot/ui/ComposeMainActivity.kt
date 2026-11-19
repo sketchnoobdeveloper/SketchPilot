@@ -9,6 +9,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,7 +33,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -44,6 +53,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -112,14 +124,17 @@ private fun SketchPilotApp(vm: MainViewModel = viewModel()) {
         bottomBar = {
             BottomAppBar {
                 val items = listOf(
-                    Routes.PROJECTS to "projects", Routes.AGENT to "agent",
-                    Routes.CAPABILITIES to "caps", Routes.MCP to "mcp", Routes.SETTINGS to "settings"
+                    Triple(Routes.PROJECTS, "projects", Icons.Filled.Home),
+                    Triple(Routes.AGENT, "agent", Icons.Filled.Build),
+                    Triple(Routes.CAPABILITIES, "caps", Icons.Filled.List),
+                    Triple(Routes.MCP, "mcp", Icons.Filled.Info),
+                    Triple(Routes.SETTINGS, "settings", Icons.Filled.Settings)
                 )
-                items.forEach { (route, key) ->
+                items.forEach { (route, key, icon) ->
                     NavigationBarItem(
                         selected = current == route,
                         onClick = { nav.navigate(route) },
-                        icon = {},
+                        icon = { Icon(icon, contentDescription = tr(key)) },
                         label = { Text(tr(key)) }
                     )
                 }
@@ -148,8 +163,20 @@ private fun ProjectsScreen(vm: MainViewModel, tr: (String) -> String) {
     LaunchedEffect(Unit) { vm.refreshProjects() }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         FilledTonalButton(onClick = { vm.refreshProjects() }) { Text(tr("refresh")) }
-        Text(status, style = MaterialTheme.typography.bodySmall)
+        val isError = status.contains("unavailable", true) || status.contains("failed", true)
+        Text(status, style = MaterialTheme.typography.bodySmall,
+            color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(12.dp))
+        if (projects.isEmpty() && !isError) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("No projects found", style = MaterialTheme.typography.titleMedium)
+                    Text("Give Sketchware storage access, then refresh.", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                    FilledTonalButton(onClick = { vm.refreshProjects() }) { Text(tr("refresh")) }
+                }
+            }
+        }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(projects) { p ->
                 Card(Modifier.fillMaxWidth()) {
@@ -172,15 +199,34 @@ private fun AgentScreen(vm: MainViewModel, tr: (String) -> String) {
     var model by remember { mutableStateOf(vm.model) }
     var key by remember { mutableStateOf(vm.apiKey) }
     var showProvider by remember { mutableStateOf(false) }
+    var showKey by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         FilledTonalButton(onClick = { showProvider = !showProvider }) { Text(tr("provider")) }
         if (showProvider) {
             OutlinedTextField(base, { base = it; vm.baseUrl = it }, label = { Text("Base URL") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(model, { model = it; vm.model = it }, label = { Text("Model") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(key, { key = it; vm.apiKey = it }, label = { Text("API key") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                key, { key = it; vm.apiKey = it },
+                label = { Text("API key") },
+                modifier = Modifier.fillMaxWidth(),
+                visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
+                trailingIcon = {
+                    TextButton(onClick = { showKey = !showKey }) { Text(if (showKey) "Hide" else "Show") }
+                }
+            )
         }
         Spacer(Modifier.height(12.dp))
+        if (messages.isEmpty()) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Ask your first question", style = MaterialTheme.typography.titleMedium)
+                    Text("SketchPilot can inspect projects, edit IR and explain logic.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(messages) { msg ->
                 Card(Modifier.fillMaxWidth()) {
@@ -213,6 +259,21 @@ private fun CapabilitiesScreen(tr: (String) -> String) {
             }
         }.getOrDefault(listOf("Snapshot unreadable"))
     }
+    fun reload() {
+        rows = runCatching {
+            val file = File("/storage/emulated/0/.sketchware/sketchpilot/capabilities.json")
+            if (!file.isFile) listOf("No snapshot yet — open Sketchware Pro with the module enabled.")
+            else {
+                val array = org.json.JSONArray(file.readText())
+                (0 until array.length()).map { i ->
+                    val row = array.getJSONObject(i)
+                    "${row.optString("label")} [${row.optString("mode")}] ${row.optString("detail")}"
+                }
+            }
+        }.getOrDefault(listOf("Snapshot unreadable"))
+    }
+    FilledTonalButton(onClick = { reload() }) { Text(tr("refresh")) }
+    Spacer(Modifier.height(12.dp))
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(rows) { Card(Modifier.fillMaxWidth()) { Text(it, Modifier.padding(12.dp)) } }
     }
@@ -268,11 +329,22 @@ private fun SettingsScreen(tr: (String) -> String, language: String, onLanguage:
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Module kill switch")
-            Switch(checked = kill, onCheckedChange = {
-                val file = File("/storage/emulated/0/.sketchware/sketchpilot/killswitch")
-                if (it) { file.parentFile?.mkdirs(); file.createNewFile() } else file.delete()
-                kill = it
-            })
+            var confirm by remember { mutableStateOf(false) }
+            Switch(checked = kill, onCheckedChange = { confirm = it })
+            if (confirm) {
+                AlertDialog(
+                    onDismissRequest = { confirm = false },
+                    title = { Text("Disable module?") },
+                    text = { Text("This stops all Sketchware Pro hooks until re-enabled. Reopen Sketchware Pro afterwards.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val file = File("/storage/emulated/0/.sketchware/sketchpilot/killswitch")
+                            file.parentFile?.mkdirs(); file.createNewFile(); kill = true; confirm = false
+                        }) { Text("Disable") }
+                    },
+                    dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } }
+                )
+            }
         }
     }
 }
