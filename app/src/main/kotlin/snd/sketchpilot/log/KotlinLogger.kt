@@ -29,8 +29,8 @@ object KotlinLogger {
             try {
                 file.parentFile?.mkdirs()
                 FileWriter(file, true).use { writer ->
-                    writer.write(line); writer.newLine()
-                    if (error != null) error.printStackTrace(writer)
+                    writer.write(line + "\n")
+                    if (error != null) java.io.PrintWriter(writer).use { error.printStackTrace(it) }
                 }
             } catch (ignored: Throwable) { }
         }
