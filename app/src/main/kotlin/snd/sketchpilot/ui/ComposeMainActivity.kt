@@ -84,14 +84,15 @@ private object Strings {
 /** Thread + Handler helper: keeps work off the UI thread without adding another concurrency framework. */
 private fun <T> runBackground(work: () -> T, done: (T?) -> Unit) {
     val handler = Handler(Looper.getMainLooper())
-    Thread {
+    val runnable = Runnable {
         try {
             val result = work()
             handler.post { done(result) }
         } catch (t: Throwable) {
             handler.post { done(null) }
         }
-    }, "SketchPilotUi").start()
+    }
+    Thread(runnable, "SketchPilotUi").start()
 }
 
 class ComposeMainActivity : ComponentActivity() {
@@ -276,7 +277,7 @@ private fun McpScreen(lang: Lang, activity: ComponentActivity) {
 @Composable
 private fun ToolsScreen(lang: Lang, activity: ComponentActivity, onLanguage: (Lang) -> Unit) {
     var diagnosticsPath by remember { mutableStateOf("") }
-    var killSwitch by remember { mutableStateOf(snd.sketchpilot.core.hook.KillSwitch.isActive()) }
+    var killSwitch by remember { mutableStateOf<Boolean>(snd.sketchpilot.core.hook.KillSwitch.isActive()) }
 
     Button(onClick = {
         diagnosticsPath = "building..."
