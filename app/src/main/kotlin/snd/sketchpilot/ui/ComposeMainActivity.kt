@@ -179,10 +179,7 @@ private fun ProjectsScreen(lang: Lang) {
     fun load() {
         loading = true
         runBackground({
-            val repo = snd.sketchpilot.project.OfflineRepository(
-                snd.sketchpilot.project.SketchwarePaths(File("/storage/emulated/0")),
-                snd.sketchpilot.project.crypto.SketchwareCrypto()
-            )
+            val repo = snd.sketchpilot.core.data.OfflineRepository()
             repo.listProjects().map { it.id + "  •  " + it.workspaceName + "  •  " + it.packageName }
         }, { result ->
             loading = false
