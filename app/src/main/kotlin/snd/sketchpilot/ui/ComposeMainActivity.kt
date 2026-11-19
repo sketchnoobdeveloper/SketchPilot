@@ -175,7 +175,7 @@ private fun NavItems(
         if (rail) {
             NavigationRailItem(selected = selected, onClick = onClick, icon = { Icon(icon, tr(key)) }, label = { Text(tr(key)) })
         } else {
-            NavigationBarItem(selected = selected, onClick = onClick, icon = { Icon(icon, tr(key)) }, label = { Text(tr(key)) })
+            androidx.compose.material3.NavigationBarItem(selected = selected, onClick = onClick, icon = { Icon(icon, tr(key)) }, label = { Text(tr(key)) })
         }
     }
 }
