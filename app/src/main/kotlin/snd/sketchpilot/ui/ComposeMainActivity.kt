@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -143,40 +145,47 @@ private fun SketchPilotApp(vm: MainViewModel = viewModel()) {
 
     if (compact) {
         Scaffold(topBar = topBar, bottomBar = {
-            NavigationBar { NavItems(current, navigate, tr, false) }
+            NavigationBar { NavBarItems(current, navigate, tr) }
         }) { padding -> AppNav(nav, vm, tr, language, padding, { language = it }) }
     } else {
         Row(Modifier.fillMaxSize()) {
             NavigationRail(header = {
                 Text(tr("app"), Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
-            }) { NavItems(current, navigate, tr, true) }
+            }) { NavRailItems(current, navigate, tr) }
             Scaffold(topBar = topBar) { padding -> AppNav(nav, vm, tr, language, padding, { language = it }) }
         }
     }
 }
 
+private fun navItemList() = listOf(
+    Triple(Routes.PROJECTS, "projects", Icons.Filled.Home),
+    Triple(Routes.AGENT, "agent", Icons.Filled.Build),
+    Triple(Routes.CAPABILITIES, "caps", Icons.Filled.List),
+    Triple(Routes.MCP, "mcp", Icons.Filled.Info),
+    Triple(Routes.SETTINGS, "settings", Icons.Filled.Settings)
+)
+
 @Composable
-private fun NavItems(
-    current: String,
-    navigate: (String) -> Unit,
-    tr: (String) -> String,
-    rail: Boolean,
-) {
-    val items = listOf(
-        Triple(Routes.PROJECTS, "projects", Icons.Filled.Home),
-        Triple(Routes.AGENT, "agent", Icons.Filled.Build),
-        Triple(Routes.CAPABILITIES, "caps", Icons.Filled.List),
-        Triple(Routes.MCP, "mcp", Icons.Filled.Info),
-        Triple(Routes.SETTINGS, "settings", Icons.Filled.Settings)
-    )
-    items.forEach { (route, key, icon) ->
-        val selected = current == route
-        val onClick = { navigate(route) }
-        if (rail) {
-            NavigationRailItem(selected = selected, onClick = onClick, icon = { Icon(icon, tr(key)) }, label = { Text(tr(key)) })
-        } else {
-            androidx.compose.material3.NavigationBarItem(selected = selected, onClick = onClick, icon = { Icon(icon, tr(key)) }, label = { Text(tr(key)) })
-        }
+private fun RowScope.NavBarItems(current: String, navigate: (String) -> Unit, tr: (String) -> String) {
+    navItemList().forEach { (route, key, icon) ->
+        NavigationBarItem(
+            selected = current == route,
+            onClick = { navigate(route) },
+            icon = { Icon(icon, tr(key)) },
+            label = { Text(tr(key)) },
+        )
+    }
+}
+
+@Composable
+private fun ColumnScope.NavRailItems(current: String, navigate: (String) -> Unit, tr: (String) -> String) {
+    navItemList().forEach { (route, key, icon) ->
+        NavigationRailItem(
+            selected = current == route,
+            onClick = { navigate(route) },
+            icon = { Icon(icon, tr(key)) },
+            label = { Text(tr(key)) },
+        )
     }
 }
 
