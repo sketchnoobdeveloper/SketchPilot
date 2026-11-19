@@ -126,8 +126,8 @@ open class OpenAiCompatibleProvider(override val name: String = "openai") : LlmP
             BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8)).use { reader ->
                 val parser = SseParser()
                 val finished = booleanArrayOf(false)
-                var line: String?
-                while (!finished[0] && reader.readLine().also { line = it } != null) {
+                while (!finished[0]) {
+                    val line = reader.readLine() ?: break
                     parser.feed(line)?.let { event ->
                         if (event.isDone) finished[0] = true
                         else if (event.data.isNotEmpty()) runCatching { parseChunk(JSONObject(event.data), callback, finished) }
@@ -192,7 +192,7 @@ class OllamaProvider : OpenAiCompatibleProvider("ollama") {
 }
 
 class ProviderRegistry {
-    private val providers = mutableMapOf(
+    private val providers = mutableMapOf<String, LlmProvider>(
         "openai" to OpenAiCompatibleProvider(),
         "openrouter" to OpenAiCompatibleProvider("openrouter"),
         "anthropic" to AnthropicProvider(),
