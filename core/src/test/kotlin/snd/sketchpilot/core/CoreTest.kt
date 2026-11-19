@@ -66,6 +66,7 @@ class CoreTest {
         val paths = Paths(root)
         val repo = OfflineRepository(paths, crypto)
         val before = paths.dataFile("999", "view")
+        before.parentFile.mkdirs()
         val original = "@main.xml\n{\"id\":\"old\",\"type\":4}\n"
         before.writeBytes(crypto.encrypt(original))
         val editor = ProjectEditor(paths, repo)
