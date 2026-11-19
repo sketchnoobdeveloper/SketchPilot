@@ -1,4 +1,5 @@
 package snd.sketchpilot.ui
+import androidx.compose.foundation.background
 
 import android.Manifest
 import android.content.Intent
@@ -16,7 +17,10 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,6 +29,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -32,7 +37,19 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
@@ -41,8 +58,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -52,6 +67,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -100,17 +116,14 @@ class ComposeMainActivity : ComponentActivity() {
                 .launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         setContent {
-            val context = LocalContext.current
-            val scheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) dynamicDarkColorScheme(context)
-            else darkColorScheme()
-            MaterialTheme(colorScheme = scheme) {
+            SketchPilotTheme {
                 Surface(Modifier.fillMaxSize()) { SketchPilotApp() }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
 private fun SketchPilotApp(vm: MainViewModel = viewModel()) {
     val nav = rememberNavController()
@@ -119,35 +132,81 @@ private fun SketchPilotApp(vm: MainViewModel = viewModel()) {
     val backStack by nav.currentBackStackEntryAsState()
     val current = backStack?.destination?.route ?: Routes.PROJECTS
 
-    Scaffold(
-        topBar = { TopAppBar(title = { Text(tr("app") + " — " + tr(currentTitleKey(current))) }) },
-        bottomBar = {
-            BottomAppBar {
-                val items = listOf(
-                    Triple(Routes.PROJECTS, "projects", Icons.Filled.Home),
-                    Triple(Routes.AGENT, "agent", Icons.Filled.Build),
-                    Triple(Routes.CAPABILITIES, "caps", Icons.Filled.List),
-                    Triple(Routes.MCP, "mcp", Icons.Filled.Info),
-                    Triple(Routes.SETTINGS, "settings", Icons.Filled.Settings)
-                )
-                items.forEach { (route, key, icon) ->
-                    NavigationBarItem(
-                        selected = current == route,
-                        onClick = { nav.navigate(route) },
-                        icon = { Icon(icon, contentDescription = tr(key)) },
-                        label = { Text(tr(key)) }
-                    )
-                }
-            }
+    val activity = LocalContext.current as android.app.Activity
+    val compact = calculateWindowSizeClass(activity).widthSizeClass == WindowWidthSizeClass.Compact
+    val navigate = { route: String ->
+        nav.navigate(route) {
+            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
         }
-    ) { padding ->
-        NavHost(nav, startDestination = Routes.PROJECTS, modifier = Modifier.padding(padding)) {
-            composable(Routes.PROJECTS) { ProjectsScreen(vm, tr) }
-            composable(Routes.AGENT) { AgentScreen(vm, tr) }
-            composable(Routes.CAPABILITIES) { CapabilitiesScreen(tr) }
-            composable(Routes.MCP) { McpScreen(tr) }
-            composable(Routes.SETTINGS) { SettingsScreen(tr, language, { language = it }) }
+    }
+    val topBar: @Composable () -> Unit = {
+        TopAppBar(title = { Text(tr("app") + " — " + tr(currentTitleKey(current))) })
+    }
+
+    if (compact) {
+        Scaffold(topBar = topBar, bottomBar = {
+            NavigationBar { NavItems(current, navigate, tr, false) }
+        }) { padding -> AppNav(nav, vm, tr, language, padding, { language = it }) }
+    } else {
+        Row(Modifier.fillMaxSize()) {
+            NavigationRail(header = {
+                Text(tr("app"), Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
+            }) { NavItems(current, navigate, tr, true) }
+            Scaffold(topBar = topBar) { padding -> AppNav(nav, vm, tr, language, padding, { language = it }) }
         }
+    }
+}
+
+@Composable
+private fun NavItems(
+    current: String,
+    navigate: (String) -> Unit,
+    tr: (String) -> String,
+    rail: Boolean,
+) {
+    val items = listOf(
+        Triple(Routes.PROJECTS, "projects", Icons.Filled.Home),
+        Triple(Routes.AGENT, "agent", Icons.Filled.Build),
+        Triple(Routes.CAPABILITIES, "caps", Icons.Filled.List),
+        Triple(Routes.MCP, "mcp", Icons.Filled.Info),
+        Triple(Routes.SETTINGS, "settings", Icons.Filled.Settings)
+    )
+    items.forEach { (route, key, icon) ->
+        val selected = current == route
+        val onClick = { navigate(route) }
+        if (rail) {
+            NavigationRailItem(selected, onClick, { Icon(icon, tr(key)) }, { Text(tr(key)) })
+        } else {
+            NavigationBarItem(selected, onClick, { Icon(icon, tr(key)) }, { Text(tr(key)) })
+        }
+    }
+}
+
+@Composable
+private fun AppNav(
+    nav: NavHostController,
+    vm: MainViewModel,
+    tr: (String) -> String,
+    language: String,
+    padding: androidx.compose.foundation.layout.PaddingValues,
+    onLanguage: (String) -> Unit,
+) {
+    NavHost(
+        nav,
+        startDestination = Routes.PROJECTS,
+        modifier = Modifier.padding(padding),
+        enterTransition = { fadeIn(animationSpec = tween(200)) },
+        exitTransition = { fadeOut(animationSpec = tween(160)) },
+        popEnterTransition = { fadeIn(animationSpec = tween(200)) },
+        popExitTransition = { fadeOut(animationSpec = tween(160)) },
+    ) {
+        composable(Routes.PROJECTS) { ProjectsScreen(vm, tr) }
+        composable(Routes.AGENT) { AgentScreen(vm, tr) }
+        composable(Routes.CAPABILITIES) { CapabilitiesScreen(tr) }
+        composable(Routes.MCP) { McpScreen(tr) }
+        composable(Routes.SETTINGS) { SettingsScreen(tr, language, onLanguage) }
     }
 }
 
@@ -179,10 +238,29 @@ private fun ProjectsScreen(vm: MainViewModel, tr: (String) -> String) {
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(projects) { p ->
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(p.workspaceName.ifEmpty { p.id }, style = MaterialTheme.typography.titleMedium)
-                        Text("${p.id} • ${p.packageName}", style = MaterialTheme.typography.bodySmall)
+                Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                (p.workspaceName.ifEmpty { p.id }).take(1).uppercase(),
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(p.workspaceName.ifEmpty { p.id }, style = MaterialTheme.typography.titleMedium)
+                            Text(p.packageName, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text("ID ${p.id}", style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
