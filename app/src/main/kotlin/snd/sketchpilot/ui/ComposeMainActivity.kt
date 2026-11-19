@@ -135,11 +135,7 @@ private fun SketchPilotApp(vm: MainViewModel = viewModel()) {
     val activity = LocalContext.current as android.app.Activity
     val compact = calculateWindowSizeClass(activity).widthSizeClass == WindowWidthSizeClass.Compact
     val navigate = { route: String ->
-        nav.navigate(route) {
-            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
-        }
+        nav.navigate(route) { launchSingleTop = true }
     }
     val topBar: @Composable () -> Unit = {
         TopAppBar(title = { Text(tr("app") + " — " + tr(currentTitleKey(current))) })
@@ -177,9 +173,9 @@ private fun NavItems(
         val selected = current == route
         val onClick = { navigate(route) }
         if (rail) {
-            NavigationRailItem(selected, onClick, { Icon(icon, tr(key)) }, { Text(tr(key)) })
+            NavigationRailItem(selected = selected, onClick = onClick, icon = { Icon(icon, tr(key)) }, label = { Text(tr(key)) })
         } else {
-            NavigationBarItem(selected, onClick, { Icon(icon, tr(key)) }, { Text(tr(key)) })
+            NavigationBarItem(selected = selected, onClick = onClick, icon = { Icon(icon, tr(key)) }, label = { Text(tr(key)) })
         }
     }
 }

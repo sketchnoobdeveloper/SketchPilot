@@ -19,7 +19,7 @@ private fun DesignSample() {
         Text("Projects • Agent • Capabilities", style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Card(Modifier.padding(top = 16.dp)) {
-            Text("QuickNotes", style = MaterialTheme.typography.titleMedium, Modifier.padding(16.dp))
+            Text("QuickNotes", Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
         }
         Button(onClick = {}, Modifier.padding(top = 16.dp)) { Text("Run diagnostics") }
     }
