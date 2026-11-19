@@ -49,7 +49,7 @@
         </activity>
 
         <service
-            android:name=".mcp.McpService"
+            android:name=".mcp.KotlinMcpService"
             android:exported="false" />
     </application>
 </manifest>

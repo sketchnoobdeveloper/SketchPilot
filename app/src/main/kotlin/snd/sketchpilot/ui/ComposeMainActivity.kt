@@ -1,6 +1,7 @@
 package snd.sketchpilot.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -219,10 +220,22 @@ private fun CapabilitiesScreen(tr: (String) -> String) {
 
 @Composable
 private fun McpScreen(tr: (String) -> String) {
+    val context = LocalContext.current
+    var running by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("Streamable HTTP", style = MaterialTheme.typography.titleMedium)
         Text("http://127.0.0.1:17890/mcp")
         Text("Bearer token: stored in app files, never displayed")
+        Text("Status: ${if (running) "running" else "stopped"}")
+        Spacer(Modifier.height(12.dp))
+        Button(onClick = {
+            context.startForegroundService(Intent(context, snd.sketchpilot.mcp.KotlinMcpService::class.java))
+            running = true
+        }) { Text("Start MCP") }
+        Button(onClick = {
+            context.stopService(Intent(context, snd.sketchpilot.mcp.KotlinMcpService::class.java))
+            running = false
+        }) { Text("Stop MCP") }
         Spacer(Modifier.height(16.dp))
         Text("Register in OpenCode with mcp.servers + protocol auto.", style = MaterialTheme.typography.bodyMedium)
     }

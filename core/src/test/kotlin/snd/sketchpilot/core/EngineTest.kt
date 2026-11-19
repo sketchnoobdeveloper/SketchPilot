@@ -20,6 +20,8 @@ import snd.sketchpilot.core.provider.ProviderRegistry
 import snd.sketchpilot.core.provider.ProviderRequest
 import snd.sketchpilot.core.provider.SseParser
 import snd.sketchpilot.core.tools.registerCoreTools
+import snd.sketchpilot.core.mcp.McpDispatcher
+import snd.sketchpilot.core.mcp.McpProtocol
 import java.io.File
 
 class EngineTest {
@@ -82,5 +84,13 @@ class EngineTest {
         assertTrue(events.contains("tool_call"))
         assertTrue(events.contains("tool_result"))
         root.deleteRecursively()
+    }
+
+    @Test fun mcpProtocol() {
+        assertTrue(McpProtocol.LATEST == "2026-07-28")
+        assertTrue(McpDispatcher.constantTimeEquals("Bearer abc", "Bearer abc"))
+        assertTrue(!McpDispatcher.constantTimeEquals("Bearer abc", "Bearer abd"))
+        assertTrue(McpDispatcher.isLocalOrigin("http://127.0.0.1:8080"))
+        assertTrue(!McpDispatcher.isLocalOrigin("https://evil.example"))
     }
 }
